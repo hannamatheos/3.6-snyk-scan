@@ -1,0 +1,19 @@
+{
+  "name": "serverless-package-scan",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hannamatheos/serverless-package-scan.git"
+  },
+  "author": "luqman",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/hannamatheos/serverless-package-scan/issues"
+  },
+  "homepage": "https://github.com/hannamatheos/serverless-package-scan#readme"
+}
