@@ -1,0 +1,154 @@
+name: Package Scan With Serverless Lambda
+run-name: ${{ github.actor }} is performing package vulnerability scans for serverless application
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  pre-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This job is automatically triggered by a ${{ github.event_name }} event."
+
+  install-dependencies:
+    runs-on: ubuntu-latest
+    needs: [pre-deploy]
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Run installation of dependencies commands
+        run: npm install
+
+  # Perform first level package scanning using npm audit.
+  # npm audit information can be found here:
+  # https://docs.npmjs.com/cli/v9/commands/npm-audit
+
+  package-scan-npm-audit:
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Run installation of dependencies commands
+        run: npm install
+      - name: Run audit
+        run: npm audit
+
+  # We will use Snyk to perform open source code scanning of our JavaScript files
+  # Ensure that you have registered for a Snyk account
+  # Grab the API key from your username > API Key
+  # Insert the API key in Github Actions Secret called "SNYK_TOKEN"
+
+  package-osc-scan-snyk-scan:
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  # We will also use Snyk to perform application code scanning
+
+  package-app-scan-snyk-scan:
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+      - name: Run Snyk Code Scan And Check Snyk Scan Results
+        run: snyk code test
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+  # We will also use Snyk to perform code scanning of our Terraform IAC files
+
+  package-iac-scan-snyk-scan:
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Install Snyk CLI
+        run: npm install -g snyk
+      - name: Run Snyk Code Scan And Check Snyk Scan Results
+        uses: snyk/actions/iac@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: "--report --severity-threshold=high --scan=resource-changes"
+
+  terraform-create:
+    needs:
+      [
+        package-scan-npm-audit,
+        package-osc-scan-snyk-scan,
+        package-app-scan-snyk-scan,
+        package-iac-scan-snyk-scan,
+      ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform fmt
+        run: terraform fmt
+
+      - name: Terraform plan
+        run: terraform plan
+
+      - name: Terraform apply
+        run: terraform apply -auto-approve
+
+  terraform-wait:
+    needs: terraform-create
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pause 2min to verify lambda creation and test
+        run: sleep 120
+
+  terraform-destroy:
+    needs: terraform-wait
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve
